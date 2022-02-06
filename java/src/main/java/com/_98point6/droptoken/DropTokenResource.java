@@ -1,17 +1,8 @@
 package com._98point6.droptoken;
 
-import com._98point6.droptoken.model.CreateGameRequest;
-import com._98point6.droptoken.model.CreateGameResponse;
-import com._98point6.droptoken.model.GameStatusResponse;
-import com._98point6.droptoken.model.GetGamesResponse;
-import com._98point6.droptoken.model.GetMoveResponse;
-import com._98point6.droptoken.model.GetMovesResponse;
-import com._98point6.droptoken.model.PostMoveRequest;
-import com._98point6.droptoken.model.PostMoveResponse;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 
 import javax.ws.rs.DELETE;
 import javax.ws.rs.GET;
@@ -23,6 +14,18 @@ import javax.ws.rs.QueryParam;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com._98point6.droptoken.model.CreateGameRequest;
+import com._98point6.droptoken.model.CreateGameResponse;
+import com._98point6.droptoken.model.GameStatusResponse;
+import com._98point6.droptoken.model.GetGamesResponse;
+import com._98point6.droptoken.model.GetMoveResponse;
+import com._98point6.droptoken.model.GetMovesResponse;
+import com._98point6.droptoken.model.PostMoveRequest;
+import com._98point6.droptoken.model.PostMoveResponse;
+
 /**
  *
  */
@@ -30,45 +33,44 @@ import javax.ws.rs.core.Response;
 @Produces(MediaType.APPLICATION_JSON)
 public class DropTokenResource {
     private static final Logger logger = LoggerFactory.getLogger(DropTokenResource.class);
-    private GetGamesResponse gamesResponse;
+    private GetGamesResponse inProgressGames;
+    private Map<String, GameStatusResponse> allGames;
 
     public DropTokenResource() {
-    	GetGamesResponse.Builder builder = new GetGamesResponse.Builder();
-    	gamesResponse = builder.games(new ArrayList<String>())
+    	GetGamesResponse.Builder getGamesResponseBuilder = new GetGamesResponse.Builder();
+    	inProgressGames = getGamesResponseBuilder.games(new ArrayList<String>())
     		   .build();
+    	allGames = new HashMap<String, GameStatusResponse>();
     }
     
 
     @GET
     public Response getGames() {
-    	logger.info("Hello there!");
         //return Response.ok(new GetGamesResponse()).build();
-    	return Response.ok(gamesResponse.getGames()).build();
+    	return Response.ok(inProgressGames.getGames()).build();
     }
 
     @POST
     public Response createNewGame(CreateGameRequest request) {
         logger.info("request={}", request);
         
-        int currentGames = gamesResponse.getGames().size();
-        
+        int currentGames = inProgressGames.getGames().size();
         String newGame = Integer.toString(currentGames + 1);
         
-        gamesResponse.getGames().add(newGame);
-        
-        CreateGameResponse.Builder builder = new CreateGameResponse.Builder();
-        CreateGameResponse gameResponse = builder.gameId(newGame)
-        		.build();
-        
+        addToAllGames(newGame, request);
+
         //return Response.ok(new CreateGameResponse()).build();
-        return Response.ok(gameResponse).build();
+        return Response.ok(addToInProgressGames(newGame)).build();
     }
 
     @Path("/{id}")
     @GET
     public Response getGameStatus(@PathParam("id") String gameId) {
         logger.info("gameId = {}", gameId);
-        return Response.ok(new GameStatusResponse()).build();
+        
+        GameStatusResponse gameStatusResponse = allGames.get(gameId);
+        
+        return Response.ok(gameStatusResponse).build();
     }
 
     @Path("/{id}/{playerId}")
@@ -96,6 +98,25 @@ public class DropTokenResource {
     public Response getMove(@PathParam("id") String gameId, @PathParam("moveId") Integer moveId) {
         logger.info("gameId={}, moveId={}", gameId, moveId);
         return Response.ok(new GetMoveResponse()).build();
+    }
+    
+    private CreateGameResponse addToInProgressGames(String newGame) {
+        inProgressGames.getGames().add(newGame);
+        
+        CreateGameResponse.Builder builder = new CreateGameResponse.Builder();
+        CreateGameResponse gameResponse = builder.gameId(newGame)
+        		.build();
+        return gameResponse;
+    }
+    
+    private void addToAllGames(String newGame, CreateGameRequest request) {
+        GameStatusResponse.Builder gameStatusResponseBuilder = new GameStatusResponse.Builder();
+        GameStatusResponse gameStatusResponse = 
+			 gameStatusResponseBuilder.players(request.getPlayers())
+									  .moves(0)
+									  .winner(null)
+									  .state("IN_PROGRESS").build(); //better could be an enum
+        allGames.put(newGame, gameStatusResponse);    	
     }
 
 }

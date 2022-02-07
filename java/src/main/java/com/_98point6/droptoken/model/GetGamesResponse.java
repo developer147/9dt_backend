@@ -8,6 +8,8 @@ import java.util.List;
  *
  */
 public class GetGamesResponse {
+	// Opinion/Subjective: Set<String> Data Type could be a better choice because
+	// of constant time over linear when searching for a game
     private List<String> games;
 
     public GetGamesResponse() {}

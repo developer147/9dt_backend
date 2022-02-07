@@ -96,8 +96,6 @@ public class DropTokenResource {
         
         GameStatusResponse gameStatusResponse = allGames.get(gameId);
         
-        // Opinion/Subjective: Set<String> Data Type could be a better choice because
-    	// of constant time over linear when searching for a game
         if (!inProgressGames.getGames().contains(gameId) || 
         		!gameStatusResponse.getPlayers().contains(playerId)) {
         	return Response.status(Response.Status.NOT_FOUND).build();
@@ -107,15 +105,46 @@ public class DropTokenResource {
         	return Response.status(Response.Status.BAD_REQUEST).build();
         }
         
-        logger.info("-->" + gameStatusResponse.getPlayers().get(gameStatusResponse.getTurn()) + "," + 
-        		gameStatusResponse.getPlayers().get(gameStatusResponse.getTurn()).equals(playerId));
-        
         if (!gameStatusResponse.getPlayers().get(gameStatusResponse.getTurn()).equals(playerId)) {
         	return Response.status(Response.Status.CONFLICT).build();
         } 
-        	
-        gameStatusResponse.setTurn();
+        
+        int rowIndex = 0;
+        while (!gameStatusResponse.getGrid(rowIndex, request.getColumn()).isEmpty()) {
+        	rowIndex++;
+            if (rowIndex == gameStatusResponse.getRows()) {
+            	return Response.status(Response.Status.BAD_REQUEST).build();
+            } 
+        }
+        gameStatusResponse.setGrid(rowIndex, request.getColumn(), playerId);
         gameStatusResponse.incrementMoves();
+        
+        PostMoveResponse.Builder postMoveResponseBuilder = new PostMoveResponse.Builder();
+        PostMoveResponse postMoveResponse = postMoveResponseBuilder.moveLink(gameId + "/moves/" + gameStatusResponse.getMoves())
+        					   .build();
+        
+        //TODO: check for a win or a draw and stop the game if yes is an answer to either of the above
+        if (didPlayerWin(gameStatusResponse, rowIndex, request.getColumn(), playerId, gameId) ||
+        		isGameDrawn(gameStatusResponse)) {
+        	GameStatusResponse.Builder builder = new GameStatusResponse.Builder();
+        	builder = builder.fromPrototype(gameStatusResponse);
+        	GameStatusResponse newGameStatusResponse = builder.state("DONE").build();
+        	allGames.put(gameId, newGameStatusResponse);
+        	
+        	for (int index = 0; index < inProgressGames.getGames().size(); index++) {
+        		if (inProgressGames.getGames().get(index).equals(gameId)) {
+        			inProgressGames.getGames().remove(index);
+        			break;
+        		}
+        	}
+        	return Response.ok(postMoveResponse).build();
+        }
+        
+        gameStatusResponse.setNextTurn();
+        
+//        GameStatusResponse.Builder builder = new GameStatusResponse.Builder().fromPrototype(gameStatusResponse);
+//        GameStatusResponse newGameStatusResponse = builder.moves(gameStatusResponse.getMoves() + 1).build();
+//        allGames.put(gameId, newGameStatusResponse);
         
         GetMoveResponse.Builder getMoveResponseBuilder = new GetMoveResponse.Builder();
         GetMoveResponse getMoveResponse = getMoveResponseBuilder.type("MOVE")
@@ -125,12 +154,6 @@ public class DropTokenResource {
         
         List<GetMoveResponse> movesResponse = gameStatusResponse.getMovesResponse().getMoves();
         movesResponse.add(getMoveResponse);
-        
-        PostMoveResponse.Builder postMoveResponseBuilder = new PostMoveResponse.Builder();
-        PostMoveResponse postMoveResponse = postMoveResponseBuilder.moveLink(gameId + "/moves/" + gameStatusResponse.getMoves())
-        					   .build();
-        
-        //TODO: check for a win or a draw and stop the game if yes is an answer to either of the above
         
         //return Response.ok(new PostMoveResponse()).build();
         return Response.ok(postMoveResponse).build();
@@ -258,4 +281,46 @@ public class DropTokenResource {
         return json;
     }
 
+    private boolean didPlayerWin(GameStatusResponse gameStatusResponse, int row, int column, String playerId, String gameId) {
+    	// column check for win
+    	//if (row == gameStatusResponse.getRows() - 1) {
+		int rowIndex = 0;
+    	while (rowIndex < gameStatusResponse.getRows()) {
+    		if (!gameStatusResponse.getGrid(rowIndex, column).equals(playerId)) {
+    			break;
+    		}
+    		rowIndex++;
+    	}   
+    	if (rowIndex == gameStatusResponse.getRows()) {
+    		GameStatusResponse.Builder builder = new GameStatusResponse.Builder();
+    		builder = builder.fromPrototype(gameStatusResponse);
+    		GameStatusResponse newGameStatusResponse = builder.winner(playerId).build();
+    		allGames.put(gameId, newGameStatusResponse);
+    		return true;
+    	}
+    	//}
+    	
+    	int columnIndex = 0;
+    	while (columnIndex < gameStatusResponse.getColumns()) {
+    		if (!gameStatusResponse.getGrid(row, columnIndex).equals(playerId)) {
+    			break;
+    		}
+    		columnIndex++;
+    	}
+
+    	if (columnIndex == gameStatusResponse.getColumns()) {
+    		GameStatusResponse.Builder builder = new GameStatusResponse.Builder();
+    		builder = builder.fromPrototype(gameStatusResponse);
+    		GameStatusResponse newGameStatusResponse = builder.winner(playerId).build();
+    		allGames.put(gameId, newGameStatusResponse);    		
+    		return true;
+    	}
+    	
+		return false;
+    }
+    
+    private boolean isGameDrawn(GameStatusResponse gameStatusResponse) {
+    	return gameStatusResponse.getMoves().equals(gameStatusResponse.getRows() * gameStatusResponse.getColumns())
+    			|| gameStatusResponse.getPlayers().size() == 1;
+    }
 }

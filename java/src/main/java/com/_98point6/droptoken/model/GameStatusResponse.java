@@ -3,6 +3,7 @@ package com._98point6.droptoken.model;
 import com.google.common.base.Preconditions;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
@@ -11,7 +12,7 @@ import java.util.Optional;
  */
 public class GameStatusResponse {
     private List<String> players;
-    //private Integer moves;
+    private Integer moves;
     private String winner;
     private String state;
     
@@ -20,8 +21,10 @@ public class GameStatusResponse {
     private Integer rows;
     // Pointer to keep track of which player's turn to play next
     private Integer turn;
-    private Integer moves;
-    GetMovesResponse movesResponse;
+    //private Integer moves;
+    private GetMovesResponse movesResponse;
+    private String[][] grid;
+    
 
     public GameStatusResponse() {}
 
@@ -32,6 +35,10 @@ public class GameStatusResponse {
         this.state = Preconditions.checkNotNull(builder.state);
         this.columns = Preconditions.checkNotNull(builder.columns);
         this.rows = Preconditions.checkNotNull(builder.rows);
+        this.grid = new String[rows][columns];
+        for (String[] row: grid) {
+        	Arrays.fill(row, "");
+        }
         this.turn = 0; //by default it's always the first player's turn to start game.
         this.moves = 0;
         
@@ -44,9 +51,9 @@ public class GameStatusResponse {
         return players;
     }
 
-//    public Integer getMoves() {
-//        return moves;
-//    }
+    public Integer getMoves() {
+        return moves;
+    }
 
     public Optional<String> getWinner() {
         return Optional.ofNullable(winner);
@@ -68,16 +75,12 @@ public class GameStatusResponse {
     	return turn;
     }
     
-    public void setTurn() {
+    public void setNextTurn() {
     	if (turn == (players.size() - 1)) {
     		turn = 0;
     	} else {
     		turn++;
     	}
-    }
-    
-    public Integer getMoves() {
-    	return moves;
     }
     
     public void incrementMoves() {
@@ -86,6 +89,16 @@ public class GameStatusResponse {
     
     public GetMovesResponse getMovesResponse() {
     	return movesResponse;
+    }
+    
+    public String getGrid(int row, int column) {
+    	// TODO: May want to handle out of bound row/column
+    	return grid[row][column];
+    }
+    
+    public void setGrid(int row, int column, String playerId) {
+    	// TODO: May want to handle out of bound row/column
+    	grid[row][column] = playerId;
     }
 
     public static class Builder {

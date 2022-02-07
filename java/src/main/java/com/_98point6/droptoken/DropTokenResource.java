@@ -130,7 +130,7 @@ public class DropTokenResource {
         PostMoveResponse postMoveResponse = postMoveResponseBuilder.moveLink(gameId + "/moves/" + gameStatusResponse.getMoves())
         					   .build();
         
-        //TODO: check a win or a draw and stop the game if yes is an answer to either of the above
+        //TODO: check for a win or a draw and stop the game if yes is an answer to either of the above
         
         //return Response.ok(new PostMoveResponse()).build();
         return Response.ok(postMoveResponse).build();
@@ -148,6 +148,20 @@ public class DropTokenResource {
         logger.info("gameId={}, start={}, until={}", gameId, start, until);
         
         GameStatusResponse gameStatusResponse = allGames.get(gameId);
+        
+        if (start == null) {
+        	start = 0;
+        }
+        if (until == null) {
+        	until = gameStatusResponse.getMoves();
+        }        
+        
+        if (start > until) {
+        	return Response.status(Response.Status.BAD_REQUEST).build();
+        }
+        if ((gameStatusResponse == null) || (start < 0) || until > gameStatusResponse.getMoves()) {
+        	return Response.status(Response.Status.NOT_FOUND).build();
+        }
         
         GetMovesResponse movesResponse = gameStatusResponse.getMovesResponse();
         

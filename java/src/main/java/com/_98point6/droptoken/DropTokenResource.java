@@ -90,7 +90,6 @@ public class DropTokenResource {
         logger.info("gameId={}, playerId={}, move={}", gameId, playerId, request);
         
         GameStatusResponse gameStatusResponse = allGames.get(gameId);
-
         
         if (!inProgressGames.getGames().contains(gameId)) {
         	return Response.status(Response.Status.NOT_FOUND).build();
@@ -102,12 +101,10 @@ public class DropTokenResource {
         	return Response.status(Response.Status.NOT_FOUND).build();
         }
         
-        //if (request.getColumn() < 1 || request.getColumn() > gameStatusResponse.getGgetColumns()) {
         if (request.getColumn() < 0 || request.getColumn() >= columns) {
         	return Response.status(Response.Status.BAD_REQUEST).build();
         }
         
-        //if (!gameStatusResponse.getPlayers().get(gameStatusResponse.getTurn()).equals(playerId)) {
         if (!gameStatusResponse.getWhoseTurn().equals(playerId)) {
         	return Response.status(Response.Status.CONFLICT).build();
         } 
@@ -135,7 +132,6 @@ public class DropTokenResource {
         List<GetMoveResponse> movesResponse = gameStatusResponse.getMovesResponse().getMoves();
         movesResponse.add(getMoveResponse);        
         
-        //TODO: check for a win or a draw and stop the game if yes is an answer to either of the above
         if (didPlayerWin(gameStatusResponse, rowIndex, request.getColumn(), playerId, gameId) ||
         		isGameDrawn(gameStatusResponse)) {
         	markGameAsDone(gameStatusResponse, playerId, gameId);
@@ -170,13 +166,11 @@ public class DropTokenResource {
         
         for (int index = 0; index < players.size(); index++) {
         	if (players.get(index).equals(playerId)) {
-        		System.out.println("AAAAAAAA");
         		players.remove(index);
         		break;
         	}
         }
         
-        System.out.println("BBBBBBBBB");
         if (players.size() == 1) {
         	markGameAsDone(gameStatusResponse, players.get(0), gameId);
         }
@@ -287,8 +281,7 @@ public class DropTokenResource {
 									  .grid(initGrid(request.getRows(), request.getColumns()))
 									  .movesResponse(movesResponse)
 									  .state("IN_PROGRESS").build();
-									  //.columns(request.getColumns())
-									  //.rows(request.getRows()).build(); //better could be an enum
+
         allGames.put(newGame, gameStatusResponse);    	
     }
     

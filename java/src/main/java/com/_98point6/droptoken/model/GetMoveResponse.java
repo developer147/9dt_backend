@@ -25,6 +25,7 @@ public class GetMoveResponse {
         return player;
     }
 
+    // Question: Why is this optional? Is it because a move can be invalid? 
     public Optional<Integer> getColumn() {
         return Optional.ofNullable(column);
     }

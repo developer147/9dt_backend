@@ -1,6 +1,7 @@
 package com._98point6.droptoken;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -51,7 +52,6 @@ public class DropTokenResource {
 
     @GET
     public Response getGames() {
-        //return Response.ok(new GetGamesResponse()).build();
     	return Response.ok(inProgressGames.getGames()).build();
     }
 
@@ -59,22 +59,20 @@ public class DropTokenResource {
     public Response createNewGame(CreateGameRequest request) {
         logger.info("request={}", request);
         
-        if (!validateMinPlayers(request) || !validateMinBoardSize(request)) {
+        if (!validateMinPlayers(request) || !validateMinBoardSize(request) || !validateBoardDimensions(request)) {
         	return Response.status(Response.Status.BAD_REQUEST).build();
         }
         
-        int currentGames = inProgressGames.getGames().size();
-        String newGame = Integer.toString(currentGames + 1);
+        String newGame = Integer.toString(allGames.keySet().size() + 1);
         
         addToAllGames(newGame, request);
 
-        //return Response.ok(new CreateGameResponse()).build();
         return Response.ok(addToInProgressGames(newGame)).build();
     }
 
     @Path("/{id}")
     @GET
-    public Response getGameStatus(@PathParam("id") String gameId) {
+    public Response getGameStatus(@PathParam("id") String gameId) throws JsonProcessingException {
         logger.info("gameId = {}", gameId);
         
         GameStatusResponse gameStatusResponse = allGames.get(gameId);
@@ -83,10 +81,7 @@ public class DropTokenResource {
         	return Response.status(Response.Status.NOT_FOUND).build();
         }
         
-        String json = getGameStatusResponse(gameStatusResponse);
-        
-        //return Response.ok(gameStatusResponse).build();
-        return Response.ok(json).build();
+        return Response.ok(getGameStatusResponse(gameStatusResponse)).build();
     }
 
     @Path("/{id}/{playerId}")
@@ -95,56 +90,41 @@ public class DropTokenResource {
         logger.info("gameId={}, playerId={}, move={}", gameId, playerId, request);
         
         GameStatusResponse gameStatusResponse = allGames.get(gameId);
+
         
-        if (!inProgressGames.getGames().contains(gameId) || 
-        		!gameStatusResponse.getPlayers().contains(playerId)) {
+        if (!inProgressGames.getGames().contains(gameId)) {
         	return Response.status(Response.Status.NOT_FOUND).build();
         }
         
-        if (request.getColumn() < 1 || request.getColumn() > gameStatusResponse.getColumns()) {
+        int rows = gameStatusResponse.getGrid().length;
+        int columns = gameStatusResponse.getGrid()[0].length;
+        if (!gameStatusResponse.getPlayers().contains(playerId)) {
+        	return Response.status(Response.Status.NOT_FOUND).build();
+        }
+        
+        //if (request.getColumn() < 1 || request.getColumn() > gameStatusResponse.getGgetColumns()) {
+        if (request.getColumn() < 0 || request.getColumn() >= columns) {
         	return Response.status(Response.Status.BAD_REQUEST).build();
         }
         
-        if (!gameStatusResponse.getPlayers().get(gameStatusResponse.getTurn()).equals(playerId)) {
+        //if (!gameStatusResponse.getPlayers().get(gameStatusResponse.getTurn()).equals(playerId)) {
+        if (!gameStatusResponse.getWhoseTurn().equals(playerId)) {
         	return Response.status(Response.Status.CONFLICT).build();
         } 
-        
+        	
         int rowIndex = 0;
-        while (!gameStatusResponse.getGrid(rowIndex, request.getColumn()).isEmpty()) {
+        while (!gameStatusResponse.getGridCell(rowIndex, request.getColumn()).isEmpty()) {
         	rowIndex++;
-            if (rowIndex == gameStatusResponse.getRows()) {
+            if (rowIndex == rows) {
             	return Response.status(Response.Status.BAD_REQUEST).build();
             } 
         }
-        gameStatusResponse.setGrid(rowIndex, request.getColumn(), playerId);
+        gameStatusResponse.setGridCell(rowIndex, request.getColumn(), playerId);
         gameStatusResponse.incrementMoves();
         
         PostMoveResponse.Builder postMoveResponseBuilder = new PostMoveResponse.Builder();
         PostMoveResponse postMoveResponse = postMoveResponseBuilder.moveLink(gameId + "/moves/" + gameStatusResponse.getMoves())
         					   .build();
-        
-        //TODO: check for a win or a draw and stop the game if yes is an answer to either of the above
-        if (didPlayerWin(gameStatusResponse, rowIndex, request.getColumn(), playerId, gameId) ||
-        		isGameDrawn(gameStatusResponse)) {
-        	GameStatusResponse.Builder builder = new GameStatusResponse.Builder();
-        	builder = builder.fromPrototype(gameStatusResponse);
-        	GameStatusResponse newGameStatusResponse = builder.state("DONE").build();
-        	allGames.put(gameId, newGameStatusResponse);
-        	
-        	for (int index = 0; index < inProgressGames.getGames().size(); index++) {
-        		if (inProgressGames.getGames().get(index).equals(gameId)) {
-        			inProgressGames.getGames().remove(index);
-        			break;
-        		}
-        	}
-        	return Response.ok(postMoveResponse).build();
-        }
-        
-        gameStatusResponse.setNextTurn();
-        
-//        GameStatusResponse.Builder builder = new GameStatusResponse.Builder().fromPrototype(gameStatusResponse);
-//        GameStatusResponse newGameStatusResponse = builder.moves(gameStatusResponse.getMoves() + 1).build();
-//        allGames.put(gameId, newGameStatusResponse);
         
         GetMoveResponse.Builder getMoveResponseBuilder = new GetMoveResponse.Builder();
         GetMoveResponse getMoveResponse = getMoveResponseBuilder.type("MOVE")
@@ -153,9 +133,16 @@ public class DropTokenResource {
         					  .build();
         
         List<GetMoveResponse> movesResponse = gameStatusResponse.getMovesResponse().getMoves();
-        movesResponse.add(getMoveResponse);
+        movesResponse.add(getMoveResponse);        
         
-        //return Response.ok(new PostMoveResponse()).build();
+        //TODO: check for a win or a draw and stop the game if yes is an answer to either of the above
+        if (didPlayerWin(gameStatusResponse, rowIndex, request.getColumn(), playerId, gameId) ||
+        		isGameDrawn(gameStatusResponse)) {
+        	markGameAsDone(gameStatusResponse, playerId, gameId);
+        } else {
+        	gameStatusResponse.setWhoseTurn();
+        }
+        
         return Response.ok(postMoveResponse).build();
     }
 
@@ -163,11 +150,43 @@ public class DropTokenResource {
     @DELETE
     public Response playerQuit(@PathParam("id")String gameId, @PathParam("playerId") String playerId) {
         logger.info("gameId={}, playerId={}", gameId, playerId);
+        
+        GameStatusResponse gameStatusResponse = allGames.get(gameId);
+        
+        if (gameStatusResponse != null && gameStatusResponse.getState() == "DONE") {
+        	return Response.status(Response.Status.GONE).build();
+        }
+        
+        if (!inProgressGames.getGames().contains(gameId) ||
+        		!gameStatusResponse.getPlayers().contains(playerId)) {
+        	return Response.status(Response.Status.NOT_FOUND).build();
+        }
+        
+        List<String> players = gameStatusResponse.getPlayers();
+        
+        if (gameStatusResponse.getWhoseTurn().equals(playerId)) {
+        	gameStatusResponse.setWhoseTurn();
+        }
+        
+        for (int index = 0; index < players.size(); index++) {
+        	if (players.get(index).equals(playerId)) {
+        		System.out.println("AAAAAAAA");
+        		players.remove(index);
+        		break;
+        	}
+        }
+        
+        System.out.println("BBBBBBBBB");
+        if (players.size() == 1) {
+        	markGameAsDone(gameStatusResponse, players.get(0), gameId);
+        }
+        
         return Response.status(202).build();
     }
+    
     @Path("/{id}/moves")
     @GET
-    public Response getMoves(@PathParam("id") String gameId, @QueryParam("start") Integer start, @QueryParam("until") Integer until) {
+    public Response getMoves(@PathParam("id") String gameId, @QueryParam("start") Integer start, @QueryParam("until") Integer until) throws JsonProcessingException {
         logger.info("gameId={}, start={}, until={}", gameId, start, until);
         
         GameStatusResponse gameStatusResponse = allGames.get(gameId);
@@ -210,23 +229,26 @@ public class DropTokenResource {
         }
         arrayNode.addAll(nodes);
         
-        String json = null;
-        try {
-			json = mapper.writeValueAsString(arrayNode);
-		} catch (JsonProcessingException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-        
-        //return Response.ok(new GetMovesResponse()).build();
-        return Response.ok(json).build();
+        return Response.ok(mapper.writeValueAsString(arrayNode)).build();
     }
 
     @Path("/{id}/moves/{moveId}")
     @GET
     public Response getMove(@PathParam("id") String gameId, @PathParam("moveId") Integer moveId) {
         logger.info("gameId={}, moveId={}", gameId, moveId);
-        return Response.ok(new GetMoveResponse()).build();
+        
+        GameStatusResponse gameStatusResponse = allGames.get(gameId);
+        
+        if (gameStatusResponse == null) {
+        	return Response.status(Response.Status.NOT_FOUND).build();
+        }
+        
+        List<GetMoveResponse> moves = gameStatusResponse.getMovesResponse().getMoves();
+        if ((moveId < 1)|| (moveId > moves.size())) {
+        	return Response.status(Response.Status.NOT_FOUND).build();
+        }
+        
+        return Response.ok(moves.get(moveId - 1)).build();
     }
     
     private boolean validateMinPlayers(CreateGameRequest request) {
@@ -236,6 +258,10 @@ public class DropTokenResource {
     private boolean validateMinBoardSize(CreateGameRequest request) {
     	return request.getColumns() >= 4 && request.getRows() >= 4;
     }
+    
+    private boolean validateBoardDimensions(CreateGameRequest request) {
+    	return request.getColumns() == request.getRows();
+    }    
     
     private CreateGameResponse addToInProgressGames(String newGame) {
         inProgressGames.getGames().add(newGame);
@@ -248,17 +274,33 @@ public class DropTokenResource {
     
     private void addToAllGames(String newGame, CreateGameRequest request) {
         GameStatusResponse.Builder gameStatusResponseBuilder = new GameStatusResponse.Builder();
+        
+        GetMovesResponse.Builder getMovesResponseBuilder = new GetMovesResponse.Builder();
+        GetMovesResponse movesResponse = getMovesResponseBuilder.moves(new ArrayList<GetMoveResponse>())
+        									   .build();        
+        
         GameStatusResponse gameStatusResponse = 
 			 gameStatusResponseBuilder.players(request.getPlayers())
-									  //.moves(0)
+									  .moves(0)
 									  .winner(null)
-									  .state("IN_PROGRESS")
-									  .columns(request.getColumns())
-									  .rows(request.getRows()).build(); //better could be an enum
+									  .whoseTurn(request.getPlayers().get(0))
+									  .grid(initGrid(request.getRows(), request.getColumns()))
+									  .movesResponse(movesResponse)
+									  .state("IN_PROGRESS").build();
+									  //.columns(request.getColumns())
+									  //.rows(request.getRows()).build(); //better could be an enum
         allGames.put(newGame, gameStatusResponse);    	
     }
     
-    private String getGameStatusResponse(GameStatusResponse gameStatusResponse) {
+    private String[][] initGrid(int rows, int columns) {
+        String[][] grid = new String[rows][columns];
+        for (String[] row: grid) {
+        	Arrays.fill(row, "");
+        }
+        return grid;
+    }
+    
+    private String getGameStatusResponse(GameStatusResponse gameStatusResponse) throws JsonProcessingException {
         ObjectMapper mapper = new ObjectMapper();
         
         ObjectNode node = mapper.createObjectNode();
@@ -266,61 +308,111 @@ public class DropTokenResource {
         node.put("players", gameStatusResponse.getPlayers().toString());
         node.put("state", gameStatusResponse.getState());
         if (gameStatusResponse.getState() == "DONE") {
-        	node.put("winner", gameStatusResponse.getWinner().toString());
+        	node.put("winner", gameStatusResponse.getWinner().get().toString());
         }
-        //TODO: Handle when winner attribute should be included in the response
         
-        
-        String json = null;
-        try {
-			json = mapper.writeValueAsString(node);
-		} catch (JsonProcessingException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}   
-        return json;
+		return mapper.writeValueAsString(node);
     }
 
     private boolean didPlayerWin(GameStatusResponse gameStatusResponse, int row, int column, String playerId, String gameId) {
     	// column check for win
-    	//if (row == gameStatusResponse.getRows() - 1) {
+        if (contiguousColumnCheck(gameStatusResponse, column, playerId, gameId) ||
+    		contiguousRowCheck(gameStatusResponse, row, playerId, gameId) ||
+    		contiguousDiagnolCheck(gameStatusResponse, row, column, playerId, gameId) ||
+    		continguousAntiDiagnolCheck(gameStatusResponse, row, column, playerId, gameId)) {
+        	return true;
+        }
+    	
+		return false;
+    }
+    
+    private boolean contiguousDiagnolCheck(GameStatusResponse gameStatusResponse, int row, int column, String playerId, String gameId) {
+    	if (row != column) {
+    		return false;
+    	}
+    	
+    	int rows = gameStatusResponse.getGrid().length;
+    	int index = 0;
+    	while (index < rows) {
+    		if (!gameStatusResponse.getGridCell(index, index).equals(playerId)) {
+    			return false;
+    		}
+    		index++;
+    	}
+    	
+    	return true;
+    }
+    
+    private boolean continguousAntiDiagnolCheck(GameStatusResponse gameStatusResponse, int row, int column, String playerId, String gameId) {
+    	if ((row + column) != (gameStatusResponse.getGrid().length - 1)) {
+    		return false;
+    	}
+    	
+    	int rows = gameStatusResponse.getGrid().length;
+    	int rowIndex = 0;
+    	int colIndex = gameStatusResponse.getGrid()[0].length - 1;
+    	while (rowIndex < rows) {
+    		if (!gameStatusResponse.getGridCell(rowIndex, colIndex).equals(playerId)) {
+    			return false;
+    		}
+    		rowIndex++;
+    		colIndex--;
+    	}
+    	
+    	return true;
+    }
+    
+    private boolean contiguousColumnCheck(GameStatusResponse gameStatusResponse, int column, String playerId, String gameId) {
+    	int rows = gameStatusResponse.getGrid().length;
 		int rowIndex = 0;
-    	while (rowIndex < gameStatusResponse.getRows()) {
-    		if (!gameStatusResponse.getGrid(rowIndex, column).equals(playerId)) {
+    	while (rowIndex < rows) {
+    		if (!gameStatusResponse.getGridCell(rowIndex, column).equals(playerId)) {
     			break;
     		}
     		rowIndex++;
     	}   
-    	if (rowIndex == gameStatusResponse.getRows()) {
-    		GameStatusResponse.Builder builder = new GameStatusResponse.Builder();
-    		builder = builder.fromPrototype(gameStatusResponse);
-    		GameStatusResponse newGameStatusResponse = builder.winner(playerId).build();
-    		allGames.put(gameId, newGameStatusResponse);
+    	if (rowIndex == rows) {
     		return true;
     	}
-    	//}
-    	
+    	return false;
+    }
+    
+    private boolean contiguousRowCheck(GameStatusResponse gameStatusResponse, int row, String playerId, String gameId) {
+    	int columns = gameStatusResponse.getGrid()[0].length;
     	int columnIndex = 0;
-    	while (columnIndex < gameStatusResponse.getColumns()) {
-    		if (!gameStatusResponse.getGrid(row, columnIndex).equals(playerId)) {
+    	while (columnIndex < columns) {
+    		if (!gameStatusResponse.getGridCell(row, columnIndex).equals(playerId)) {
     			break;
     		}
     		columnIndex++;
     	}
 
-    	if (columnIndex == gameStatusResponse.getColumns()) {
-    		GameStatusResponse.Builder builder = new GameStatusResponse.Builder();
-    		builder = builder.fromPrototype(gameStatusResponse);
-    		GameStatusResponse newGameStatusResponse = builder.winner(playerId).build();
-    		allGames.put(gameId, newGameStatusResponse);    		
+    	if (columnIndex == columns) {
     		return true;
-    	}
-    	
-		return false;
+    	}   
+    	return false;
+    }
+    
+    private void markGameAsDone(GameStatusResponse gameStatusResponse, String playerId, String gameId) {
+		GameStatusResponse.Builder builder = new GameStatusResponse.Builder();
+		builder = builder.fromPrototype(gameStatusResponse);
+		GameStatusResponse newGameStatusResponse = builder.winner(playerId)
+														.state("DONE")
+														.build();
+		allGames.put(gameId, newGameStatusResponse);
+		
+    	for (int index = 0; index < inProgressGames.getGames().size(); index++) {
+    		if (inProgressGames.getGames().get(index).equals(gameId)) {
+    			inProgressGames.getGames().remove(index);
+    			break;
+    		}
+    	}		
     }
     
     private boolean isGameDrawn(GameStatusResponse gameStatusResponse) {
-    	return gameStatusResponse.getMoves().equals(gameStatusResponse.getRows() * gameStatusResponse.getColumns())
-    			|| gameStatusResponse.getPlayers().size() == 1;
+        int rows = gameStatusResponse.getGrid().length;
+        int columns = gameStatusResponse.getGrid()[0].length;
+        
+    	return gameStatusResponse.getMoves().equals(rows * columns);
     }
 }

@@ -1,11 +1,9 @@
 package com._98point6.droptoken.model;
 
-import com.google.common.base.Preconditions;
-
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+
+import com.google.common.base.Preconditions;
 
 /**
  *
@@ -17,11 +15,8 @@ public class GameStatusResponse {
     private String state;
     
     // below are added by me
-    private Integer columns;
-    private Integer rows;
     // Pointer to keep track of which player's turn to play next
-    private Integer turn;
-    //private Integer moves;
+    private String whoseTurn;
     private GetMovesResponse movesResponse;
     private String[][] grid;
     
@@ -30,21 +25,12 @@ public class GameStatusResponse {
 
     private GameStatusResponse(Builder builder) {
         this.players = Preconditions.checkNotNull(builder.players);
-        //this.moves = Preconditions.checkNotNull(builder.moves);
+        this.moves = Preconditions.checkNotNull(builder.moves);
         this.winner = builder.winner;
         this.state = Preconditions.checkNotNull(builder.state);
-        this.columns = Preconditions.checkNotNull(builder.columns);
-        this.rows = Preconditions.checkNotNull(builder.rows);
-        this.grid = new String[rows][columns];
-        for (String[] row: grid) {
-        	Arrays.fill(row, "");
-        }
-        this.turn = 0; //by default it's always the first player's turn to start game.
-        this.moves = 0;
-        
-        GetMovesResponse.Builder getMovesResponseBuilder = new GetMovesResponse.Builder();
-        this.movesResponse = getMovesResponseBuilder.moves(new ArrayList<GetMoveResponse>())
-        									   .build();
+        this.grid = Preconditions.checkNotNull(builder.grid);
+        this.whoseTurn = Preconditions.checkNotNull(builder.whoseTurn);
+        this.movesResponse = Preconditions.checkNotNull(builder.movesResponse);
     }
 
     public List<String> getPlayers() {
@@ -63,23 +49,29 @@ public class GameStatusResponse {
         return state;
     }
     
-    public Integer getColumns() {
-    	return columns;
+    public String[][] getGrid() {
+    	return grid;
     }
     
-    public Integer getRows() {
-    	return rows;
+    public String getWhoseTurn() {
+    	return whoseTurn;
     }
     
-    public Integer getTurn() {
-    	return turn;
-    }
-    
-    public void setNextTurn() {
-    	if (turn == (players.size() - 1)) {
-    		turn = 0;
-    	} else {
-    		turn++;
+    public void setWhoseTurn() {
+//    	if (turn == (players.size() - 1)) {
+//    		turn = 0;
+//    	} else {
+//    		turn++;
+//    	}
+    	for (int index = 0; index < players.size(); index++) {
+    		if (players.get(index).equals(whoseTurn)) {
+    			if ((index + 1) < players.size()) {
+    				whoseTurn = players.get(index + 1);
+    			} else {
+    				whoseTurn = players.get(0);
+    			}
+    			break;
+    		}
     	}
     }
     
@@ -91,33 +83,32 @@ public class GameStatusResponse {
     	return movesResponse;
     }
     
-    public String getGrid(int row, int column) {
-    	// TODO: May want to handle out of bound row/column
+    public String getGridCell(int row, int column) {
     	return grid[row][column];
     }
     
-    public void setGrid(int row, int column, String playerId) {
-    	// TODO: May want to handle out of bound row/column
+    public void setGridCell(int row, int column, String playerId) {
     	grid[row][column] = playerId;
     }
 
     public static class Builder {
         private List<String> players;
-        //private Integer moves;
+        private Integer moves;
         private String winner;
         private String state;
-        private Integer columns;
-        private Integer rows;
+        private GetMovesResponse movesResponse;
+        private String[][] grid;
+        private String whoseTurn;
 
         public Builder players(List<String> players) {
             this.players = players;
             return this;
         }
 
-//        public Builder moves(Integer moves) {
-//            this.moves = moves;
-//            return this;
-//        }
+        public Builder moves(Integer moves) {
+            this.moves = moves;
+            return this;
+        }
 
         public Builder winner(String winner) {
             this.winner = winner;
@@ -129,23 +120,29 @@ public class GameStatusResponse {
             return this;
         }
         
-        public Builder columns(Integer columns) {
-        	this.columns = columns;
+        public Builder movesResponse(GetMovesResponse movesResponse) {
+        	this.movesResponse = movesResponse;
         	return this;
         }
         
-        public Builder rows(Integer rows) {
-        	this.rows = rows;
+        public Builder grid(String[][] grid) {
+        	this.grid = grid;
+        	return this;
+        }
+        
+        public Builder whoseTurn(String whoseTurn) {
+        	this.whoseTurn = whoseTurn;
         	return this;
         }
 
         public Builder fromPrototype(GameStatusResponse prototype) {
             players = prototype.players;
-            //moves = prototype.moves;
+            moves = prototype.moves;
             winner = prototype.winner;
             state = prototype.state;
-            columns = prototype.columns;
-            rows = prototype.rows;
+            movesResponse = prototype.movesResponse;
+            grid = prototype.grid;
+            whoseTurn = prototype.whoseTurn;
             return this;
         }
 
